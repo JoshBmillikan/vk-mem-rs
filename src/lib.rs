@@ -177,6 +177,9 @@ impl Default for AllocatorCreateFlags {
 
 /// Description of an `Allocator` to be created.
 pub struct AllocatorCreateInfo<'a> {
+    /// ash entry functions
+    pub entry: ash::Entry,
+
     /// Vulkan physical device. It must be valid throughout whole lifetime of created allocator.
     pub physical_device: ash::vk::PhysicalDevice,
 
@@ -192,21 +195,6 @@ pub struct AllocatorCreateInfo<'a> {
     /// Preferred size of a single `ash::vk::DeviceMemory` block to be allocated from large heaps > 1 GiB.
     /// Set to 0 to use default, which is currently 256 MiB.
     pub preferred_large_heap_block_size: usize,
-
-    /// Maximum number of additional frames that are in use at the same time as current frame.
-    ///
-    /// This value is used only when you make allocations with `AllocationCreateFlags::CAN_BECOME_LOST` flag.
-    ///
-    /// Such allocations cannot become lost if:
-    /// `allocation.lastUseFrameIndex >= allocator.currentFrameIndex - frameInUseCount`
-    ///
-    /// For example, if you double-buffer your command buffers, so resources used for
-    /// rendering in previous frame may still be in use by the GPU at the moment you
-    /// allocate resources needed for the current frame, set this value to 1.
-    ///
-    /// If you want to allow any allocations other than used in the current frame to
-    /// become lost, set this value to 0.
-    pub frame_in_use_count: u32,
 
     /// Either empty or an array of limits on maximum number of bytes that can be allocated
     /// out of particular Vulkan memory heap.
@@ -285,7 +273,6 @@ fn pool_create_info_to_ffi(info: &AllocatorPoolCreateInfo) -> ffi::VmaPoolCreate
     create_info.blockSize = info.block_size as vk::DeviceSize;
     create_info.minBlockCount = info.min_block_count;
     create_info.maxBlockCount = info.max_block_count;
-    create_info.frameInUseCount = info.frame_in_use_count;
     create_info
 }
 
@@ -723,8 +710,11 @@ impl Allocator {
     pub unsafe fn new(create_info: &AllocatorCreateInfo) -> VkResult<Self> {
         let instance = create_info.instance.clone();
         let device = create_info.device.clone();
+        let entry = create_info.entry.clone();
 
         let routed_functions = ffi::VmaVulkanFunctions {
+            vkGetInstanceProcAddr: entry.static_fn().get_instance_proc_addr,
+            vkGetDeviceProcAddr: instance.fp_v1_0().get_device_proc_addr,
             vkGetPhysicalDeviceProperties: instance.fp_v1_0().get_physical_device_properties,
             vkGetPhysicalDeviceMemoryProperties: instance
                 .fp_v1_0()
@@ -763,7 +753,6 @@ impl Allocator {
             device: create_info.device.handle(),
             instance: instance.handle(),
             flags: create_info.flags.bits(),
-            frameInUseCount: create_info.frame_in_use_count,
             preferredLargeHeapBlockSize: create_info.preferred_large_heap_block_size as u64,
             pHeapSizeLimit: match &create_info.heap_size_limits {
                 None => ::std::ptr::null(),
@@ -772,8 +761,8 @@ impl Allocator {
             pVulkanFunctions: &routed_functions,
             pAllocationCallbacks: allocation_callbacks,
             pDeviceMemoryCallbacks: ::std::ptr::null(), // TODO: Add support
-            pRecordSettings: ::std::ptr::null(),        // TODO: Add support
             vulkanApiVersion: create_info.vulkan_api_version,
+            pTypeExternalMemoryHandleTypes: ::std::ptr::null() // TODO: Add support
         };
 
         let mut internal: ffi::VmaAllocator = mem::zeroed();
@@ -973,11 +962,11 @@ impl Allocator {
     /// or AllocatorPoolCreateInfo::frame_in_use_count` back from now.
     ///
     /// Returns the number of allocations marked as lost.
-    pub unsafe fn make_pool_allocations_lost(&self, pool: AllocatorPool) -> VkResult<usize> {
-        let mut lost_count: usize = 0;
-        ffi::vmaMakePoolAllocationsLost(self.internal, pool, &mut lost_count);
-        Ok(lost_count as usize)
-    }
+    // pub unsafe fn make_pool_allocations_lost(&self, pool: AllocatorPool) -> VkResult<usize> {
+    //     let mut lost_count: usize = 0;
+    //     ffi::vmaMakePoolAllocationsLost(self.internal, pool, &mut lost_count);
+    //     Ok(lost_count as usize)
+    // }
 
     /// Checks magic number in margins around all allocations in given memory pool in search for corruptions.
     ///
@@ -1141,17 +1130,17 @@ impl Allocator {
     /// - Resizing dedicated allocations, as well as allocations created in pools that use linear
     ///   or buddy algorithm, is not supported. The function returns `ash::vk::Result::ERROR_FEATURE_NOT_PRESENT` in such cases.
     ///   Support may be added in the future.
-    pub unsafe fn resize_allocation(
-        &self,
-        allocation: Allocation,
-        new_size: usize,
-    ) -> VkResult<()> {
-        ffi_to_result(ffi::vmaResizeAllocation(
-            self.internal,
-            allocation,
-            new_size as vk::DeviceSize,
-        ))
-    }
+    // pub unsafe fn resize_allocation(
+    //     &self,
+    //     allocation: Allocation,
+    //     new_size: usize,
+    // ) -> VkResult<()> {
+    //     ffi_to_result(ffi::vmaResizeAllocation(
+    //         self.internal,
+    //         allocation,
+    //         new_size as vk::DeviceSize,
+    //     ))
+    // }
 
     /// Returns current information about specified allocation and atomically marks it as used in current frame.
     ///
@@ -1185,10 +1174,10 @@ impl Allocator {
     ///
     /// If the allocation has been created without `AllocationCreateFlags::CAN_BECOME_LOST` flag,
     /// this function always returns `true`.
-    pub unsafe fn touch_allocation(&self, allocation: Allocation) -> VkResult<bool> {
-        let result = ffi::vmaTouchAllocation(self.internal, allocation);
-        Ok(result == ash::vk::TRUE)
-    }
+    // pub unsafe fn touch_allocation(&self, allocation: Allocation) -> VkResult<bool> {
+    //     let result = ffi::vmaTouchAllocation(self.internal, allocation);
+    //     Ok(result == ash::vk::TRUE)
+    // }
 
     /// Sets user data in given allocation to new value.
     ///
@@ -1219,11 +1208,11 @@ impl Allocator {
     /// Returned allocation is not tied to any specific memory pool or memory type and
     /// not bound to any image or buffer. It has size = 0. It cannot be turned into
     /// a real, non-empty allocation.
-    pub unsafe fn create_lost_allocation(&self) -> VkResult<Allocation> {
-        let mut allocation: Allocation = mem::zeroed();
-        ffi::vmaCreateLostAllocation(self.internal, &mut allocation);
-        Ok(allocation)
-    }
+    // pub unsafe fn create_lost_allocation(&self) -> VkResult<Allocation> {
+    //     let mut allocation: Allocation = mem::zeroed();
+    //     ffi::vmaCreateLostAllocation(self.internal, &mut allocation);
+    //     Ok(allocation)
+    // }
 
     /// Maps memory represented by given allocation and returns pointer to it.
     ///
