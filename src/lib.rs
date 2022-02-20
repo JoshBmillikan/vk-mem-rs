@@ -1,11 +1,12 @@
 //! Easy to use, high performance memory manager for Vulkan.
 
+use std::mem;
+
+use ash::prelude::VkResult;
+use ash::vk;
 use bitflags::bitflags;
 
 pub mod ffi;
-use ash::prelude::VkResult;
-use ash::vk;
-use std::mem;
 
 /// Main allocator object
 pub struct Allocator {
@@ -15,6 +16,7 @@ pub struct Allocator {
 
 // Allocator is internally thread safe unless AllocatorCreateFlags::EXTERNALLY_SYNCHRONIZED is used (then you need to add synchronization!)
 unsafe impl Send for Allocator {}
+
 unsafe impl Sync for Allocator {}
 
 /// Represents custom memory pool handle.
@@ -49,6 +51,7 @@ pub struct AllocationInfo {
 }
 
 unsafe impl Send for AllocationInfo {}
+
 unsafe impl Sync for AllocationInfo {}
 
 impl AllocationInfo {
@@ -141,7 +144,7 @@ bitflags! {
         ///
         /// The extension provides query for current memory usage and budget, which will probably
         /// be more accurate than an estimation used by the library otherwise.
-        const EXT_MEMORY_BUDGET = 0x00000008
+        const EXT_MEMORY_BUDGET = 0x00000008;
 
         /// Enables usage of `VK_KHR_dedicated_allocation` extension.
         ///
@@ -1471,8 +1474,8 @@ impl Allocator {
     /// when you just destroyed a lot of objects). Calling it every frame may be OK, but
     /// you should measure that on your platform.
     #[deprecated(
-        since = "0.1.3",
-        note = "This is a part of the old interface. It is recommended to use structure `DefragmentationInfo2` and function `Allocator::defragmentation_begin` instead."
+    since = "0.1.3",
+    note = "This is a part of the old interface. It is recommended to use structure `DefragmentationInfo2` and function `Allocator::defragmentation_begin` instead."
     )]
     pub unsafe fn defragment(
         &self,
