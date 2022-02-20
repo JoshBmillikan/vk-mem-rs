@@ -8,6 +8,7 @@ fn main() {
     let mut build = cc::Build::new();
 
     build.include("vendor/src");
+    build.include("vendor/include");
     build.include("wrapper");
     build.include("wrapper/vulkan");
 
