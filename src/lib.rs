@@ -132,6 +132,17 @@ bitflags! {
         /// mutexes are not used.
         const EXTERNALLY_SYNCHRONIZED = 0x0000_0001;
 
+        /// Enables usage of VK_EXT_memory_budget extension.
+        ///
+        /// You may set this flag only if you found out that this device extension is supported,
+        /// you enabled it while creating Vulkan device passed as VmaAllocatorCreateInfo::device,
+        /// and you want it to be used internally by this library, along with another instance extension
+        /// VK_KHR_get_physical_device_properties2, which is required by it (or Vulkan 1.1, where this extension is promoted).
+        ///
+        /// The extension provides query for current memory usage and budget, which will probably
+        /// be more accurate than an estimation used by the library otherwise.
+        const EXT_MEMORY_BUDGET = 0x00000008
+
         /// Enables usage of `VK_KHR_dedicated_allocation` extension.
         ///
         /// Using this extenion will automatically allocate dedicated blocks of memory for
